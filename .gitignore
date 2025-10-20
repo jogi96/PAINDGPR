@@ -1,0 +1,12 @@
+# --- Ignore SEG-Y files ---
+*.SGY
+*.sgy
+*.SEGY
+*.segy
+
+# --- Ignore Python cache files ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
