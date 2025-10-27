@@ -40,8 +40,62 @@ class DatatoolKit():
             else:
                 return df
         return df
+    
+    def analyse_datetype(self, df, create_pivot = False):
+        # unique inline and Croslline combinations
+        combo_counts = df.groupby(["inline", "crossline"]).size().reset_index(name="count")
 
-    def plot_inline_raw(self, df, inlinenr):
+        # duplicated combinations
+        duplicates = combo_counts[combo_counts["count"] > 1]
+
+        # counting unique combinations
+        unique_pairs = len(combo_counts)
+
+        #counting number od traces
+        total_traces = len(df)
+
+        # number of inlines and crosslines
+        inlines = df["inline"].nunique()
+        crosslines = df["crossline"].nunique()
+
+        # Analyse
+        if len(duplicates) > 0:
+            data_type = "2D"
+        elif inlines == 1 or crosslines == 1:
+            data_type = "2D"
+        elif unique_pairs == total_traces:
+            data_type = "3D (unique combinations)"
+        else:
+            data_type = "could not determine datatype"
+
+        print(f"Inlines: {n_inl}, Crosslines: {n_xl}")
+        print(f"Traces: {total_traces}, Unique Pairs: {unique_pairs}")
+        print(f"Number of duplicated combinations: {len(duplicates)}")
+        print(f"Datatype: {data_type}")
+        
+        
+
+        if create_pivot:
+            pivot = df.pivot_table(index="inline", columns="crossline", aggfunc="size", fill_value=0)
+            print(pivot)
+
+            if pivot.shape[0] == inlines and pivot.shape[1] == crosslines:
+                print("-------------------------------")
+                print("Datatype: 3D")
+                return pivot
+        
+
+    def plot_grid(self, df):
+
+        plt.figure(figsize=(8,6))
+        plt.scatter(df["inline"], df["crossline"])
+        plt.xlabel("Inline")
+        plt.ylabel("Crossline")
+        plt.title(f"Grid for file2")
+        plt.show()
+
+
+    def plot_inline_cut_raw(self, df, inlinenr):
     
     
         sub = df[df["inline"] == inlinenr].sort_values("crossline")
@@ -56,7 +110,7 @@ class DatatoolKit():
         plt.colorbar(label="Amplitude")
         plt.show()
 
-    def plot_crossline_raw(self, df, cross_nr):
+    def plot_crossline_cut_raw(self, df, cross_nr):
 
         sub = df[df["crossline"] == cross_nr].sort_values("inline")
         traces = np.vstack(sub["Amplitude"].values)
@@ -70,7 +124,7 @@ class DatatoolKit():
         plt.colorbar(label="Amplitude")
         plt.show()
 
-    def plot_timeslice(self, df, sample_index):
+    def plot_timeslice_cut_raw(self, df, sample_index):
         inlines = np.sort(df["inline"].unique())
         crosslines = np.sort(df["crossline"].unique())
         mat = np.full((len(inlines), len(crosslines)), np.nan)
