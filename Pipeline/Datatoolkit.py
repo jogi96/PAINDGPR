@@ -68,7 +68,7 @@ class DatatoolKit():
         else:
             data_type = "could not determine datatype"
 
-        print(f"Inlines: {n_inl}, Crosslines: {n_xl}")
+        print(f"Inlines: {inlines}, Crosslines: {crosslines}")
         print(f"Traces: {total_traces}, Unique Pairs: {unique_pairs}")
         print(f"Number of duplicated combinations: {len(duplicates)}")
         print(f"Datatype: {data_type}")
@@ -82,7 +82,7 @@ class DatatoolKit():
             if pivot.shape[0] == inlines and pivot.shape[1] == crosslines:
                 print("-------------------------------")
                 print("Datatype: 3D")
-                return pivot
+    
         
 
     def plot_grid(self, df):
