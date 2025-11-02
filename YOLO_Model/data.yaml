@@ -1,0 +1,8 @@
+path: C:/pythonad/PAINDHS25/PAINDGPR/YOLO_Model
+
+train: train/images
+val: valid/images
+
+nc: 1
+names: ['hyperbola']
+task: segment
