@@ -24,6 +24,32 @@ class Predictor():
                 all_boxes[img_name] = np.empty((0,4))       
         
         return all_boxes
+    
+    def extract_boxes_and_polygons(self, results)-> dict:
+        all_results = {}
+
+        for result in results:
+            img_name = os.path.basename(result.path)
+            data = {}
+            if result.boxes is not None:
+                data["boxes"] = result.boxes.xyxy.cpu().numpy()
+                data["conf"] = result.boxes.conf.cpu().numpy()
+            
+            else:
+                data["boxes"] = np.empty((0,4)) 
+                data["conf"] = np.empty((0,))      
+        
+            if hasattr(result, "masks") and result.masks is not None:
+                print(f"found polys in :{img_name}")
+                polygons = [mask.xy[0].tolist() for mask in result.masks]
+                data["polygons"] = polygons
+            
+        
+            else:
+                data["polygons"] = []
+
+            all_results[img_name] = data
+        return all_results
 
 
         

@@ -2,7 +2,8 @@ import pandas as pd
 import numpy as np
 import segyio
 import matplotlib.pyplot as plt
-
+import os
+import random
 
 class DatatoolKit():
     def __init__(self, DIR:str, filename:str):
@@ -146,6 +147,111 @@ class DatatoolKit():
         plt.colorbar(label="Amplitude")
         plt.show()
 
+    def create_train_images(self,file, df, outdir:str, inline:bool = False, crossline:bool = False, timeslice:bool= False):
+    
+        outdir = outdir
+        filename = df["filename"].iloc[0]
+
+        if inline:
+            inlines = sorted(df["inline"].unique())
+            for inline_nr in inlines:
+                sub = df[df["inline"] == inline_nr].sort_values("crossline")
+                img = np.vstack(sub["Amplitude"].values).T
+                out_path = os.path.join(outdir, f"{filename}_inline_{inline_nr}.png")
+                plt.imsave(out_path, img, cmap="grey")
+        
+            print(f"saved {inline_nr} images to {out_path}")
+
+        if crossline:
+            crosslines = sorted(df["crossline"].unique())
+            for crossline_nr in crosslines:
+                sub = df[df["crossline"] == crossline_nr].sort_values("inline")
+                img = np.vstack(sub["Amplitude"].values).T
+                out_path = os.path.join(outdir, f"{filename}_crossline_{crossline_nr}.png")
+                plt.imsave(out_path, img, cmap="grey")
+        
+            print(f"saved {crossline_nr} images to {out_path}")
+
+        if timeslice:
+
+            bin_header = dict(file.bin)
+            bin_header_dict = dict(bin_header)
+            n_samples = int(bin_header_dict[segyio.BinField.Samples])
+
+            inlines = np.sort(df["inline"].unique())
+            crosslines = np.sort(df["crossline"].unique())
+        
+
+            il_map = {v:i for i,v in enumerate(inlines)}
+            cl_map = {v:i for i,v in enumerate(crosslines)}
+
+            for sample_index in range(n_samples):
+                mat = np.full((len(inlines), len(crosslines)), np.nan)
+
+                for _,row in df.iterrows():
+                    i = il_map[row["inline"]]
+                    j = cl_map[row["crossline"]]
+                    mat[i, j] = row["Amplitude"][sample_index]
+        
+                img = np.nan_to_num(mat)
+                out_path=os.path.join(outdir, f"{filename}_timeslice_{sample_index}.png")
+                plt.imsave(out_path, img, cmap="grey")
+        
+            print(f"saved {sample_index} images to {out_path}")
+    
+    
+    def create_random_test_images(self,df, file, outdir:str, test_inline_random:bool = False, test_crossline_random:bool = False, test_timeslice_random:bool = False,
+                        number_random_inlines:int = 1, number_random_crosslines:int = 1, number_random_timeslices:int = 1
+                        ):
+    
+        outdir = outdir
+        filename = df["filename"].iloc[0]
+
+        bin_header = dict(file.bin)
+        bin_header_dict = dict(bin_header)
+        n_samples = int(bin_header_dict[segyio.BinField.Samples])
+
+        inlines = sorted(df["inline"].unique())
+        crosslines = sorted(df["crossline"].unique())
+
+        il_map = {v: i for i, v in enumerate(inlines)}
+        cl_map = {v: i for i, v in enumerate(crosslines)}
+
+        if test_inline_random:
+            inlines = random.sample(inlines, min(number_random_inlines, len(inlines)))
+            for inline_nr in inlines:
+                sub = df[df["inline"] == inline_nr].sort_values("crossline")
+                img = np.vstack(sub["Amplitude"].values).T
+                out_path = os.path.join(outdir, f"{filename}_inline_{inline_nr}.png")
+                plt.imsave(out_path, img, cmap="grey")
+        
+            print(f"saved {len(inlines)} images to {outdir}")
+        
+        if test_crossline_random:
+            crosslines = random.sample(crosslines, min(number_random_crosslines, len(crosslines)))
+            for crossline_nr in crosslines:
+                sub = df[df["crossline"] == crossline_nr].sort_values("inline")
+                img = np.vstack(sub["Amplitude"].values).T
+                out_path = os.path.join(outdir, f"{filename}_crossline_{crossline_nr}.png")
+                plt.imsave(out_path, img, cmap="grey")
+        
+            print(f"saved {len(crosslines)} images to {outdir}")
+        
+        if test_timeslice_random:
+            rand_timeslices = random.sample(range(n_samples), min(number_random_timeslices, n_samples))
+            for sample_index in rand_timeslices:
+                mat = np.full((len(inlines), len(crosslines)), np.nan)
+
+                for _,row in df.iterrows():
+                    i = il_map[row["inline"]]
+                    j = cl_map[row["crossline"]]
+                    mat[i, j] = row["Amplitude"][sample_index]
+        
+                img = np.nan_to_num(mat)
+                out_path=os.path.join(outdir, f"{filename}_timeslice_{sample_index}.png")
+                plt.imsave(out_path, img, cmap="grey")
+        
+            print(f"saved {len(rand_timeslices)} images to {outdir}")
 
 
         

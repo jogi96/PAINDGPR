@@ -1,7 +1,7 @@
-path: C:/pythonad/PAINDHS25/PAINDGPR/YOLO_Model
-
+path: C:/vscode/PAINDGPR/YOLO_Model
 train: train/images
 val: valid/images
+test: test/images
 
 nc: 1
 names: ['hyperbola']

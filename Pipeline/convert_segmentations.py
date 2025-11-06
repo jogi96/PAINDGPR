@@ -9,6 +9,7 @@ from config import *
 
 train_ann = os.path.join(ANNOTATION_DIR, "train")
 val_ann = os.path.join(ANNOTATION_DIR, "valid")
+test_ann = os.path.join(ANNOTATION_DIR, "test")
 
 convert_coco(
     labels_dir=train_ann,
@@ -22,4 +23,9 @@ convert_coco(
     use_segments=True
 )
 
+convert_coco(
+    labels_dir=test_ann,
+    save_dir=os.path.join(YOLO_DATA_DIR, "test"),
+    use_segments=True
+)
 
