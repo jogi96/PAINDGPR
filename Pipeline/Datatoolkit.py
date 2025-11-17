@@ -4,6 +4,7 @@ import segyio
 import matplotlib.pyplot as plt
 import os
 import random
+import cv2
 
 class DatatoolKit():
     def __init__(self, DIR:str, filename:str):
@@ -147,7 +148,7 @@ class DatatoolKit():
         plt.colorbar(label="Amplitude")
         plt.show()
 
-    def create_train_images(self,file, df, outdir:str, inline:bool = False, crossline:bool = False, timeslice:bool= False):
+    def create_images(self,file, df, outdir:str, inline:bool = False, crossline:bool = False, timeslice:bool= False, resize:bool= False, Scale:tuple = None):
     
         outdir = outdir
         filename = df["filename"].iloc[0]
@@ -158,7 +159,13 @@ class DatatoolKit():
                 sub = df[df["inline"] == inline_nr].sort_values("crossline")
                 img = np.vstack(sub["Amplitude"].values).T
                 out_path = os.path.join(outdir, f"{filename}_inline_{inline_nr}.png")
-                plt.imsave(out_path, img, cmap="grey")
+                if resize:
+                    h, w = img.shape
+                    scale_h , scale_w = Scale
+                    img_resized = cv2.resize(img, (w* scale_w, h*scale_h), interpolation=cv2.INTER_LINEAR)
+                    plt.imsave(out_path, img_resized, cmap="grey")
+                else:
+                    plt.imsave(out_path, img, cmap="grey")
         
             print(f"saved {inline_nr} images to {out_path}")
 
@@ -168,7 +175,13 @@ class DatatoolKit():
                 sub = df[df["crossline"] == crossline_nr].sort_values("inline")
                 img = np.vstack(sub["Amplitude"].values).T
                 out_path = os.path.join(outdir, f"{filename}_crossline_{crossline_nr}.png")
-                plt.imsave(out_path, img, cmap="grey")
+                if resize:
+                    h, w = img.shape
+                    scale_h , scale_w = Scale
+                    img_resized = cv2.resize(img, (w* scale_w, h*scale_h), interpolation=cv2.INTER_LINEAR)
+                    plt.imsave(out_path, img_resized, cmap="grey")
+                else:
+                    plt.imsave(out_path, img, cmap="grey")
         
             print(f"saved {crossline_nr} images to {out_path}")
 
@@ -195,7 +208,13 @@ class DatatoolKit():
         
                 img = np.nan_to_num(mat)
                 out_path=os.path.join(outdir, f"{filename}_timeslice_{sample_index}.png")
-                plt.imsave(out_path, img, cmap="grey")
+                if resize:
+                    h, w = img.shape
+                    scale_h , scale_w = Scale
+                    img_resized = cv2.resize(img, (w* scale_w, h*scale_h), interpolation=cv2.INTER_LINEAR)
+                    plt.imsave(out_path, img_resized, cmap="grey")
+                else:
+                    plt.imsave(out_path, img, cmap="grey")
         
             print(f"saved {sample_index} images to {out_path}")
     

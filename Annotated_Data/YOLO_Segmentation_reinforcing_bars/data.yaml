@@ -1,0 +1,8 @@
+path: C:/pythonad/PAINDHS25/PAINDGPR/Annotated_Data/YOLO_Segmentation_reinforcing_bars
+train: train/images
+val: valid/images
+test: test/images
+
+nc: 1
+names: ['reinforcingbar']
+task: segment

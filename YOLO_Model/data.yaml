@@ -1,8 +1,0 @@
-path: C:/vscode/PAINDGPR/YOLO_Model
-train: train/images
-val: valid/images
-test: test/images
-
-nc: 1
-names: ['hyperbola']
-task: segment

@@ -1,0 +1,7 @@
+path: C:/pythonad/PAINDHS25/PAINDGPR/Annotated_Data/YOLO_Object_Detection
+train: train/images
+val: valid/images
+test: test/images
+
+nc: 1
+names: ['hyperbola']
