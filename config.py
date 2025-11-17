@@ -4,7 +4,7 @@ BASE_DIR = Path(__file__).parent
 
 TEST_PIC_DIR = BASE_DIR / "Data/Testdata/pictures"
 TEST_FILE_DIR = BASE_DIR / "DATA/Testdata/Files"
-YOLO_MODEL_SEG_DIR = BASE_DIR / "YOLO_Model_seg/Hyperbola_seg_v2/weights/best.pt"
+YOLO_MODEL_SEG_DIR = BASE_DIR / "YOLO_Model_seg/Hyperbola_seg_v25/weights/best.pt"
 YOLO_MODEL_OD_DIR = BASE_DIR / "YOLO_Model_od/best.pt"
 YOLO_DATA_DIR = BASE_DIR / "YOLO_Model"
 TRAIN_DIR = BASE_DIR / "Data/Data_for_Models/Pictures"
