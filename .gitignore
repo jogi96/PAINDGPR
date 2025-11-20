@@ -3,9 +3,9 @@
 *.sgy
 *.SEGY
 *.segy
-*.csv
+
 *.png
-*.jpg
+
 # --- Ignore Python cache files ---
 __pycache__/
 *.pyc
