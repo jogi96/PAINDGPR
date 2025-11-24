@@ -16,14 +16,14 @@ class DatatoolKit():
     def LoadSGY(self):
         return segyio.open(self.filename_full,"r", ignore_geometry=True)
     
-    def create_df(self, f, create_csv =False):
+    def create_df(self, file, create_csv =False):
         rows= []
 
-        inlines   = f.attributes(segyio.TraceField.INLINE_3D)[:]
-        crosslines = f.attributes(segyio.TraceField.CROSSLINE_3D)[:]
+        inlines   = file.attributes(segyio.TraceField.INLINE_3D)[:]
+        crosslines = file.attributes(segyio.TraceField.CROSSLINE_3D)[:]
 
-        for i in range(f.tracecount):
-            amp = np.array(f.trace[i])
+        for i in range(file.tracecount):
+            amp = np.array(file.trace[i])
             inl = inlines[i]
             cross = crosslines[i]
             rows.append({

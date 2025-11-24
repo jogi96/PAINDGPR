@@ -28,7 +28,7 @@ class Predictor():
         
         return all_boxes
 
-    def match_detections(self,results, dist_trheshhold, out_path, export:bool = False)-> dict:
+    def match_detections(self,results, dist_trheshhold, save_path, export:bool = False)-> dict:
         global_boxes = []
         global_id = 0
         records = []
@@ -102,7 +102,7 @@ class Predictor():
 
         df = pd.DataFrame(records)
         if export:
-            df.to_csv(f"{out_path}/results.csv")
+            df.to_csv(f"{save_path}/results.csv")
        
         return df
     
@@ -123,7 +123,7 @@ class Predictor():
                 number_of_detections_results += len(result.masks.xy)
 
         if number_detections_csv_total == number_of_detections_results:
-            print("Detections YOLO matching with Matched Detections")
+            print("Detections YOLO matching with Matched Detections DF")
     
         else:
             print(f"Yolo Detections:{number_of_detections_results} Number of Matched Detections {number_detections_csv_total}")
@@ -150,7 +150,7 @@ class Predictor():
             model = LinearRegression(fit_intercept=False)
             model.fit(X,y)
 
-            print(f"polygon:{i} in bbox:{bbox} , coefficients{model.coef_}")
+            print(f"fit per cut(polygon:{i} in bbox:{bbox} , coefficients{model.coef_})")
             b0, b1, b2 = model.coef_
 
             #Convert Coefficients to Hyperbel context
@@ -213,7 +213,7 @@ class Predictor():
             model = LinearRegression(fit_intercept=False)
             model.fit(X,y)
 
-            print(f"fit for bbox: {bbox}, coefficients{model.coef_}")
+            print(f"idealized fit (fit for bbox: {bbox}, coefficients{model.coef_})")
             b0, b1, b2 = model.coef_
 
             #Convert Coefficients to Hyperbel context
@@ -275,46 +275,86 @@ class Predictor():
 
         return time_per_pixel, distance_per_pixel_crosslines, distance_per_pixel_inlines
 
-    def convert_phys_params(self,df, dcrosslines, dtime):
+    def convert_phys_params(self,df, dcrosslines, dtime, export_csv:bool = False, name_of_df:str=None, save_path:str = None):
         dcrosslines = float(dcrosslines)
         dtime = float(dtime)
         df = df.copy()
         df["x0_m"] = df["x0"] * dcrosslines
         df["t0_ns"] = df["t0"] * dtime
         df["v_m/ns"] = df["v"] * (dcrosslines/dtime)
-        return df
+        
+        if export_csv:
+            df.to_csv(f"{save_path}/{name_of_df}_phys.csv")
+            return df
+        else:
+            return df
     
     
-    def plot_hyperbolas_3d_interactive(self,fits_per_cut_df, fit_idealized_df, matched_detections,physics_enabled,sgy_file, df_from_DatatoolKit,width_crosslines=None, width_inlines=None):
+    def plot_hyperbolas_3d_interactive(self,fits_per_cut_df: pd.DataFrame,
+                                       fit_idealized_df: pd.DataFrame,
+                                       matched_detections: pd.DataFrame,
+                                       physics_enabled: bool,
+                                       sgy_file: str,
+                                       df_from_DatatoolKit: pd.DataFrame,
+                                       width_crosslines: float | None = None,
+                                       width_inlines: float | None = None,
+                                       sample_rate_factor: float | None = None
+                                       ) -> None:
+        """
+        Plot 3D hyperbolas, apex points, fitted ideal surfaces and polygon detections.
+        Supports pixel mode and physical unit mode (m, ns).
 
-        number_of_crosslines, number_of_inlines, sampels_per_trace, sample_rate = self.get_axis_and_sample_rate(sgy_file=sgy_file, df=df_from_DatatoolKit)
+        Parameters
+        ----------
+        fits_per_cut_df : pd.DataFrame
+            Hyperbola fit results per cut (raw + converted if physics_enabled=True).
+        fit_idealized_df : pd.DataFrame
+            Idealized hyperbola surfaces.
+        matched_detections : pd.DataFrame
+            Polygon detections with bbox and cut information.
+        physics_enabled : bool
+            If True → convert X→meters, Y→meters, Z→nanoseconds.
+        sgy_file : str
+            Input SGY file.
+        df_from_DatatoolKit : pd.DataFrame
+            Metadata dataframe.
+        width_crosslines : float | None
+            Width of entire crossline direction (meters).
+        width_inlines : float | None
+            Width of entire inline direction (meters).
+        sample_rate_factor : float | None
+            Optional multiplier for sample spacing.
+        """
 
+        # ============================================================
+        # GET BASIC AXIS / SAMPLE INFORMATION
+        # ============================================================
+        number_of_crosslines,number_of_inlines,samples_per_trace,sample_rate= self.get_axis_and_sample_rate(sgy_file=sgy_file, 
+                                                                                                            df=df_from_DatatoolKit)
+
+        # ============================================================
+        # PHYSICAL UNIT CONVERSION (IF ENABLED)
+        # ============================================================
         if physics_enabled:
             if width_inlines is None or width_crosslines is None:
-                raise ValueError("Width Inline or Width crosslines cant be empty when physics enabled")
+                raise ValueError("Width Inline and Width Crosslines must be set in physics mode.")
 
-            time_per_pixel, distance_per_pixel_crosslines, distance_per_pixel_inlines = \
-                self.help_function_physical_units(
-                    sample_rate=sample_rate,
-                    number_of_crosslines=number_of_crosslines,
-                    number_of_inlines=number_of_inlines,
-                    width_crosslines=width_crosslines,
-                    width_inlines=width_inlines
-                )
+            # returns nanoseconds per sample, meters per pixel, meters per pixel
+            time_per_pixel, dx, dy = self.help_function_physical_units(
+                sample_rate=sample_rate,
+                sample_rate_factor=sample_rate_factor,
+                number_of_crosslines=number_of_crosslines,
+                number_of_inlines=number_of_inlines,
+                width_crosslines=width_crosslines,
+                width_inlines=width_inlines)
 
-            fits_per_cut_df = self.convert_phys_params(
-                df=fits_per_cut_df,
-                dcrosslines=distance_per_pixel_crosslines,
-                dtime=time_per_pixel
-            )
+            # convert fitted parameters
+            fits_per_cut_df = self.convert_phys_params(fits_per_cut_df, dcrosslines=dx, dtime=time_per_pixel)
+            fit_idealized_df = self.convert_phys_params(fit_idealized_df, dcrosslines=dx, dtime=time_per_pixel)
 
-        fit_idealized_df = self.convert_phys_params(
-                df=fit_idealized_df,
-                dcrosslines=distance_per_pixel_crosslines,
-                dtime=time_per_pixel
-            )
-
-        # FIGURE
+        # ============================================================
+        # FIGURE SETUP
+        # ============================================================
         fig = go.Figure()
         cmap = get_cmap("tab20")
 
@@ -324,9 +364,9 @@ class Predictor():
         traces_surface = []
         traces_surface_apex = []
 
-        # ----------------------------------------------------
-        # IDEALISIERTE FLÄCHEN + APEX-LINIEN
-        # ----------------------------------------------------
+        # ============================================================
+        # IDEALIZED SURFACES + APEX-LINES
+        # ============================================================
         for _, row in fit_idealized_df.iterrows():
 
             bbox = int(row["bbox"])
@@ -339,11 +379,18 @@ class Predictor():
             xmin, xmax = min(row["X_Data"]), max(row["X_Data"])
             cmin, cmax = min(cuts), max(cuts)
 
+            # grid in pixel units
             xf = np.linspace(xmin, xmax, 60)
             yf = np.linspace(cmin, cmax, 60)
-
             Xg, Yg = np.meshgrid(xf, yf)
             Zg = np.sqrt((4 / v_raw**2) * (Xg - x0_raw)**2 + t0_raw**2)
+
+            # convert
+            if physics_enabled:
+                xf = xf * dx
+                yf = yf * dy
+                Xg, Yg = np.meshgrid(xf, yf)
+                Zg = Zg * time_per_pixel
 
             traces_surface.append(len(fig.data))
             fig.add_trace(go.Surface(
@@ -351,20 +398,22 @@ class Predictor():
                 opacity=0.5,
                 showscale=False,
                 colorscale=[[0, col], [1, col]],
-                visible=False
+                visible=False,
+                showlegend=True
             ))
 
-            # ===== APEX-LINIE =====
+            # --------------------------------------
+            # Apex line
+            # --------------------------------------
             y_line = np.linspace(cmin, cmax, 50)
             x_line = np.full_like(y_line, x0_raw)
             z_line = np.full_like(y_line, t0_raw)
 
-            # Hover Daten
             if physics_enabled:
-                x0_m = row["x0_m"]
-                t0_ns = row["t0_ns"]
-                v_m_ns = row["v_m/ns"]
-
+                x_line = x_line * dx
+                y_line = y_line * dy
+                z_line = z_line * time_per_pixel
+                base = [x0_raw, row["x0_m"], t0_raw, row["t0_ns"], v_raw, row["v_m/ns"]]
                 hovertemplate = (
                     "<b>Idealisiert Apex</b><br>"
                     "x0 = %{customdata[0]:.1f} px (%{customdata[1]:.3f} m)<br>"
@@ -372,10 +421,8 @@ class Predictor():
                     "v = %{customdata[4]:.3f} px/samp (%{customdata[5]:.6f} m/ns)<br>"
                     "<extra></extra>"
                 )
-
-                base = [x0_raw, x0_m, t0_raw, t0_ns, v_raw, v_m_ns]
-
             else:
+                base = [x0_raw, t0_raw, v_raw]
                 hovertemplate = (
                     "<b>Idealisiert Apex</b><br>"
                     "x0 = %{customdata[0]:.1f} px<br>"
@@ -384,27 +431,22 @@ class Predictor():
                     "<extra></extra>"
                 )
 
-                base = [x0_raw, t0_raw, v_raw]
-
-            # customdata für jeden Punkt replizieren
             customdata = np.tile([base], (len(x_line), 1))
 
             traces_surface_apex.append(len(fig.data))
-            fig.add_trace(
-                go.Scatter3d(
-                    x=x_line, y=y_line, z=z_line,
-                    mode="lines",
-                    line=dict(color=col, width=5),
-                    visible=False,
-                    hovertemplate=hovertemplate,
-                    hoverinfo="text",
-                    customdata=customdata
-                )
-            )
+            fig.add_trace(go.Scatter3d(
+                x=x_line, y=y_line, z=z_line,
+                mode="lines",
+                line=dict(color=col, width=5),
+                visible=False,
+                hovertemplate=hovertemplate,
+                customdata=customdata,
+                showlegend=True
+            ))
 
-        # ----------------------------------------------------
-        # HYPERBELN PRO CUT + APEX-PUNKT
-        # ----------------------------------------------------
+        # ============================================================
+        # HYPERBOLAS PER CUT + APEX POINT
+        # ============================================================
         for _, row in fits_per_cut_df.iterrows():
 
             bbox = int(row["bbox_number"])
@@ -416,24 +458,32 @@ class Predictor():
             r, g, b, a = cmap(bbox % 20)
             col = f"rgba({255*r:.0f},{255*g:.0f},{255*b:.0f},{a})"
 
+            # Hyperbola line (pixel space)
             xf = np.linspace(X.min(), X.max(), 150)
             yf = np.full_like(xf, cut)
             tf = np.sqrt((4 / v_raw**2) * (xf - x0_raw)**2 + t0_raw**2)
+
+            # convert if needed
+            if physics_enabled:
+                xf = xf * dx
+                yf = yf * dy
+                tf = tf * time_per_pixel
 
             traces_hyper.append(len(fig.data))
             fig.add_trace(go.Scatter3d(
                 x=xf, y=yf, z=tf,
                 mode="lines",
                 line=dict(color=col, width=4),
-                visible=True
+                visible=False,
+                showlegend=False
             ))
 
-            # ===== APEX-PUNKT =====
+            # Apex point
             if physics_enabled:
-                x0_m = row["x0_m"]
-                t0_ns = row["t0_ns"]
-                v_m_ns = row["v_m/ns"]
-
+                x_ap = row["x0_m"]
+                y_ap = cut * dy
+                z_ap = row["t0_ns"]
+                base = [x0_raw, row["x0_m"], t0_raw, row["t0_ns"], v_raw, row["v_m/ns"]]
                 hovertemplate = (
                     "<b>Apex</b><br>"
                     "x0 = %{customdata[0]:.1f} px (%{customdata[1]:.3f} m)<br>"
@@ -441,10 +491,11 @@ class Predictor():
                     "v = %{customdata[4]:.3f} px/samp (%{customdata[5]:.6f} m/ns)<br>"
                     "<extra></extra>"
                 )
-
-                customdata = [[x0_raw, x0_m, t0_raw, t0_ns, v_raw, v_m_ns]]
-
             else:
+                x_ap = x0_raw
+                y_ap = cut
+                z_ap = t0_raw
+                base = [x0_raw, t0_raw, v_raw]
                 hovertemplate = (
                     "<b>Apex</b><br>"
                     "x0 = %{customdata[0]:.1f} px<br>"
@@ -453,33 +504,40 @@ class Predictor():
                     "<extra></extra>"
                 )
 
-                customdata = [[x0_raw, t0_raw, v_raw]]
-
             traces_apex.append(len(fig.data))
             fig.add_trace(go.Scatter3d(
-                x=[x0_raw], y=[cut], z=[t0_raw],
+                x=[x_ap], y=[y_ap], z=[z_ap],
                 mode="markers",
                 marker=dict(size=6, color=col),
                 visible=False,
                 hovertemplate=hovertemplate,
-                customdata=customdata
+                customdata=[base],
+                showlegend=False
             ))
 
-        # ----------------------------------------------------
-        # POLYGON-KONTUREN
-        # ----------------------------------------------------
+        # ============================================================
+        # POLYGON CONTOURS
+        # ============================================================
         for _, row in matched_detections.iterrows():
+
             try:
                 poly = json.loads(row["polygon_data"])
-            except:
+            except Exception:
+                continue
+
+            if len(poly) < 2:
                 continue
 
             xs = [p[0] for p in poly]
             zs = [p[1] for p in poly]
-            ys = [row["cut_number"]] * len(xs)
+            cut = row["cut_number"]
 
-            if len(xs) < 2:
-                continue
+            if physics_enabled:
+                xs = [x * dx for x in xs]
+                ys = [cut * dy] * len(xs)
+                zs = [z * time_per_pixel for z in zs]
+            else:
+                ys = [cut] * len(xs)
 
             bbox = int(row["bbox_number"])
             r, g, b, a = cmap(bbox % 20)
@@ -490,55 +548,63 @@ class Predictor():
                 x=xs, y=ys, z=zs,
                 mode="lines",
                 line=dict(color=col, width=3),
-                visible=False
+                visible=False,
+                showlegend=False
             ))
 
-        # ----------------------------------------------------
-        # BUTTONMASKE
-        # ----------------------------------------------------
-        def mask(traces):
+        # ============================================================
+        # BUTTON MASK
+        # ============================================================
+        def mask(lst):
             vis = [False] * len(fig.data)
-            for t in traces:
-                vis[t] = True
+            for i in lst:
+                vis[i] = True
             return vis
 
-        # ----------------------------------------------------
+        # ============================================================
         # LAYOUT
-        # ----------------------------------------------------
+        # ============================================================
+        if physics_enabled:
+            x_range = [0, number_of_crosslines * dx]
+            y_range = [0, number_of_inlines * dy]
+            z_range = [samples_per_trace * time_per_pixel, 0]
+            z_title = "Zeit (ns)"
+            x_title = "Crosslines (m)"
+            y_title = "Inlines (m)"
+        else:
+            x_range = [0, number_of_crosslines]
+            y_range = [0, number_of_inlines]
+            z_range = [samples_per_trace, 0]
+            z_title = "Zeit (Samples)"
+            x_title = "Crosslines"
+            y_title = "Inlines"
+
         fig.update_layout(
             title="<b>Detektionen und Hyperbeln</b>",
             scene=dict(
-                xaxis=dict(title="Crosslines"),
-                yaxis=dict(title="Inlines"),
-                zaxis=dict(title="Zeit (Samples)", range=[sampels_per_trace, 0])
+                xaxis=dict(title=x_title, range=x_range),
+                yaxis=dict(title=y_title, range=y_range),
+                zaxis=dict(title=z_title, range=z_range),
             ),
             updatemenus=[
                 dict(
                     type="buttons",
                     buttons=[
-                        dict(label="Polygone Detektiert",
-                            method="update",
-                            args=[{"visible": mask(traces_poly)}]),
-                        dict(label="Hyperbeln Pro Cut",
-                            method="update",
-                            args=[{"visible": mask(traces_hyper)}]),
-                        dict(label="Scheitelpunkte Pro Hyperbel",
-                            method="update",
-                            args=[{"visible": mask(traces_apex)}]),
-                        dict(label="Hyperbeln Idealisiert",
-                            method="update",
-                            args=[{"visible": mask(traces_surface)}]),
-                        dict(label="Scheitelpunkte Idealisiert",
-                            method="update",
-                            args=[{"visible": mask(traces_surface_apex)}]),
+                        dict(label="Polygone", method="update", args=[{"visible": mask(traces_poly)}]),
+                        dict(label="Hyperbeln Pro Cut", method="update", args=[{"visible": mask(traces_hyper)}]),
+                        dict(label="Apex Pro Hyperbel", method="update", args=[{"visible": mask(traces_apex)}]),
+                        dict(label="Idealisiert (Flächen)", method="update", args=[{"visible": mask(traces_surface)}]),
+                        dict(label="Apex Idealisiert", method="update", args=[{"visible": mask(traces_surface_apex)}]),
                     ],
-                    x=0, y=0.85
+                    x=0,
+                    y=0.85
                 )
             ],
             height=700
         )
 
         fig.show()
+
 
 
 
