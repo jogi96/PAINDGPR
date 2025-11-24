@@ -1,4 +1,4 @@
-path: C:/vscode/PAINDGPR/Annotated_Data/YOLO_Segmentation_reinforcing_bars
+path: C:/pythonad/PAINDHS25/PAINDGPR/Annotated_Data/YOLO_Segmentation_reinforcing_bars
 train: train/images
 val: valid/images
 

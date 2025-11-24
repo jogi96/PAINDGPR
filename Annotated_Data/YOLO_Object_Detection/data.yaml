@@ -1,4 +1,4 @@
-path: C:/vscode/PAINDGPR/Annotated_Data/YOLO_Object_Detection
+path: C:/pythonad/PAINDHS25/PAINDGPR/Annotated_Data/YOLO_Object_Detection
 train: train/images
 val: valid/images
 
