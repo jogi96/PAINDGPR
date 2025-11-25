@@ -93,7 +93,7 @@ class DatatoolKit():
         plt.scatter(df["inline"], df["crossline"])
         plt.xlabel("Inline")
         plt.ylabel("Crossline")
-        plt.title(f"Grid for file2")
+        plt.title(f"Grid for file")
         plt.show()
 
 
@@ -120,7 +120,7 @@ class DatatoolKit():
 
         plt.figure(figsize=(10, 5))
         plt.imshow(img, cmap="gray", aspect="auto", origin="upper")
-        plt.title(f"Crossline {cross_nr}in {self.filename}")
+        plt.title(f"Crossline {cross_nr} in {self.filename}")
         plt.xlabel("Inline")
         plt.ylabel("Time sample")
         plt.colorbar(label="Amplitude")
