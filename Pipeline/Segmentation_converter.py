@@ -4,10 +4,9 @@ from ultralytics.data.converter import convert_coco
 
 
 class CocoConverter:
-    def __init__(self, raw_segmentation_path, save_segmentation_path):
-        self.train_ann = os.path.join(raw_segmentation_path, "train")
-        self.val_ann = os.path.join(raw_segmentation_path, "valid")
-
+    def __init__(self, raw_segmentation_path, save_segmentation_path, folders_in_annotations:list = ["train", "valid", "test"]):
+        self.raw_segmentation_path = raw_segmentation_path
+        self.folders = folders_in_annotations
         self.save_segmentation_path = save_segmentation_path
 
     def convert_split(self, labels_dir, save_subdir):
@@ -33,5 +32,7 @@ class CocoConverter:
                 )
 
     def run(self):
-        self.convert_split(self.train_ann, "train")
-        self.convert_split(self.val_ann, "valid")
+        for i in self.folders:
+            path = os.path.join(self.raw_segmentation_path, i)
+            self.convert_split(path, i)
+        
