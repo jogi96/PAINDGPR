@@ -7,21 +7,52 @@ import random
 import cv2
 
 class DatatoolKit():
-    def __init__(self, DIR:str, filename:str):
+    """
+    Toolkit for loading, analyzing, and visualizing SEGY seismic data.
+
+
+    Attributes:
+    DIR (Path): Directory containing the SEGY file.
+    filename (str): Name of the SEGY file.
+    filename_full (str): Full path to the SEGY file.
+    """
+    def __init__(self, DIR:str, filename:str) -> None:
         self.DIR = DIR
         self.filename = filename
         self.filename_full = str(self.DIR / self.filename)
         pass
 
-    def LoadSGY(self):
+    def LoadSGY(self)->segyio.SegyFile:
+        """
+        Load SEGY file using segyio.
+
+
+        Returns:
+        segyio.SegyFile: Opened SEGY file object.
+        """
+
         return segyio.open(self.filename_full,"r", ignore_geometry=True)
     
-    def create_df(self, file, create_csv =False):
-        rows= []
+    def create_df(self, file: segyio.SegyFile, create_csv:bool = False) -> pd.DataFrame:
+        """
+        Create a pandas DataFrame containing trace metadata and amplitude arrays.
 
+
+        Args:
+        file (segyio.SegyFile): Loaded SEGY file.
+        create_csv (bool): Whether to save the dataframe as CSV.
+
+
+        Returns:
+        pd.DataFrame: DataFrame with trace information.
+        """
+        rows= []
+        
+        #get all inlines and crosslines
         inlines   = file.attributes(segyio.TraceField.INLINE_3D)[:]
         crosslines = file.attributes(segyio.TraceField.CROSSLINE_3D)[:]
 
+        #xreate the Dataframe
         for i in range(file.tracecount):
             amp = np.array(file.trace[i])
             inl = inlines[i]
@@ -34,6 +65,8 @@ class DatatoolKit():
             "Amplitude": amp
         })
         df = pd.DataFrame(rows)
+
+        #export to a csv if wished
         if create_csv:
             print("This could take a while because Datasets can be very large are you sure?")
             csv_opt = input("please type: 1 = yes , 2 = no")
@@ -43,7 +76,16 @@ class DatatoolKit():
                 return df
         return df
     
-    def analyse_datetype(self, df, create_pivot = False):
+    def analyse_datetype(self, df:pd.DataFrame, create_pivot:bool = False) -> None:
+        """
+        Analyze whether dataset is 2D or 3D based on inline/crossline combinations.
+
+
+        Args:
+        df (pd.DataFrame): DataFrame created from the SEGY file.
+        create_pivot (bool): Whether to print a pivot table of inline/crossline grid.
+        """
+
         # unique inline and Croslline combinations
         combo_counts = df.groupby(["inline", "crossline"]).size().reset_index(name="count")
 
@@ -87,7 +129,13 @@ class DatatoolKit():
     
         
 
-    def plot_grid(self, df):
+    def plot_grid(self, df:pd.DataFrame) -> None:
+        """Plot inline/crossline scatter grid.
+
+
+        Args:
+        df (pd.DataFrame): DataFrame containing inline and crossline info.
+        """
 
         plt.figure(figsize=(8,6))
         plt.scatter(df["inline"], df["crossline"])
@@ -97,9 +145,16 @@ class DatatoolKit():
         plt.show()
 
 
-    def plot_inline_cut_raw(self, df, inlinenr):
-    
-    
+    def plot_inline_cut_raw(self, df:pd.DataFrame, inlinenr:int) -> None:
+        """
+        Plot raw inline section.
+
+
+        Args:
+        df (pd.DataFrame): DataFrame of SEGY traces.
+        inlinenr (int): Inline number to plot.
+        """
+        #Sort the crosslines with respect to the chosen Inline
         sub = df[df["inline"] == inlinenr].sort_values("crossline")
         traces = np.vstack(sub["Amplitude"].values)
         img = traces.T
@@ -112,8 +167,17 @@ class DatatoolKit():
         plt.colorbar(label="Amplitude")
         plt.show()
 
-    def plot_crossline_cut_raw(self, df, cross_nr):
+    def plot_crossline_cut_raw(self, df:pd.DataFrame, cross_nr:int) -> None:
+        """
+        Plot raw crossline section.
 
+
+        Args:
+        df (pd.DataFrame): DataFrame of SEGY traces.
+        cross_nr (int): Crossline index to plot.
+        """
+
+        #Sort the inlines with respect to the chosen crossline
         sub = df[df["crossline"] == cross_nr].sort_values("inline")
         traces = np.vstack(sub["Amplitude"].values)
         img = traces.T
@@ -126,14 +190,28 @@ class DatatoolKit():
         plt.colorbar(label="Amplitude")
         plt.show()
 
-    def plot_timeslice_cut_raw(self, df, sample_index):
+    def plot_timeslice_cut_raw(self, df:pd.DataFrame, sample_index:int) -> None:
+        """
+        Plot a time slice for a given sample index.
+
+
+        Args:
+        df (pd.DataFrame): DataFrame of SEGY traces.
+        sample_index (int): Sample index for extracting amplitudes.
+        """
+        
+        # get Inlines and Crossline Indexes
         inlines = np.sort(df["inline"].unique())
         crosslines = np.sort(df["crossline"].unique())
+
+        #create 2d Array filled with NAN
         mat = np.full((len(inlines), len(crosslines)), np.nan)
 
+        #create lookup dictionary
         il_map = {v:i for i,v in enumerate(inlines)}
         cl_map = {v:i for i,v in enumerate(crosslines)}
 
+        #put the Amplitudes to the right Position in 2D Array with respect to sample index
         for _, row in df.iterrows():
             i = il_map[row["inline"]]
             j = cl_map[row["crossline"]]
@@ -148,11 +226,26 @@ class DatatoolKit():
         plt.colorbar(label="Amplitude")
         plt.show()
 
-    def create_images(self,file, df, outdir:str, inline:bool = False, crossline:bool = False, timeslice:bool= False, resize:bool= False, Scale:tuple = None):
+    def create_images(self, file:segyio.SegyFile, df:pd.DataFrame, outdir:str, inline:bool = False, crossline:bool = False, timeslice:bool= False, resize:bool= False, Scale:tuple = None) -> None:
+        """
+        Export Radargeamms (inline, crossline, timeslice) as PNG images.
+
+
+        Args:
+        file (segyio.SegyFile): Loaded SEGY file.
+        df (pd.DataFrame): DataFrame of trace data.
+        outdir (str): Output directory for saving images.
+        inline (bool): Save inline sections.
+        crossline (bool): Save crossline sections.
+        timeslice (bool): Save time slices.
+        resize (bool): Whether to resize images.
+        Scale (Optional[Tuple[int, int]]): (scale_h, scale_w) factors.
+        """
     
         outdir = outdir
         filename = df["filename"].iloc[0]
 
+        # Create Images for Inlines and save them
         if inline:
             inlines = sorted(df["inline"].unique())
             for inline_nr in inlines:
@@ -169,6 +262,7 @@ class DatatoolKit():
         
             print(f"saved {inline_nr} images to {out_path}")
 
+        #create Images for Crosslines and save them
         if crossline:
             crosslines = sorted(df["crossline"].unique())
             for crossline_nr in crosslines:
@@ -184,7 +278,8 @@ class DatatoolKit():
                     plt.imsave(out_path, img, cmap="grey")
         
             print(f"saved {crossline_nr} images to {out_path}")
-
+        
+        #create Images for time slice (Top View) and save them
         if timeslice:
 
             bin_header = dict(file.bin)
@@ -219,9 +314,23 @@ class DatatoolKit():
             print(f"saved {sample_index} images to {out_path}")
     
     
-    def create_random_test_images(self,df, file, outdir:str, test_inline_random:bool = False, test_crossline_random:bool = False, test_timeslice_random:bool = False,
+    def create_random_test_images(self, df:pd.DataFrame, file:segyio.SegyFile, outdir:str, test_inline_random:bool = False, test_crossline_random:bool = False, test_timeslice_random:bool = False,
                         number_random_inlines:int = 1, number_random_crosslines:int = 1, number_random_timeslices:int = 1
                         ):
+        """Randomly export seismic test images (inline, crossline, timeslice).
+
+
+        Args:
+        df (pd.DataFrame): DataFrame of SEGY data.
+        file (segyio.SegyFile): Loaded SEGY file.
+        outdir (str): Output directory.
+        test_inline_random (bool): Export random inline sections.
+        test_crossline_random (bool): Export random crosslines.
+        test_timeslice_random (bool): Export random time slices.
+        number_random_inlines (int): Number of random inlines.
+        number_random_crosslines (int): Number of random crosslines.
+        number_random_timeslices (int): Number of random time slices.
+        """
     
         outdir = outdir
         filename = df["filename"].iloc[0]
@@ -236,6 +345,7 @@ class DatatoolKit():
         il_map = {v: i for i, v in enumerate(inlines)}
         cl_map = {v: i for i, v in enumerate(crosslines)}
 
+        # create number of random Inline images
         if test_inline_random:
             inlines = random.sample(inlines, min(number_random_inlines, len(inlines)))
             for inline_nr in inlines:
@@ -246,6 +356,7 @@ class DatatoolKit():
         
             print(f"saved {len(inlines)} images to {outdir}")
         
+        #create number of random crossline images
         if test_crossline_random:
             crosslines = random.sample(crosslines, min(number_random_crosslines, len(crosslines)))
             for crossline_nr in crosslines:
@@ -256,6 +367,7 @@ class DatatoolKit():
         
             print(f"saved {len(crosslines)} images to {outdir}")
         
+        #create random number od timeslice images
         if test_timeslice_random:
             rand_timeslices = random.sample(range(n_samples), min(number_random_timeslices, n_samples))
             for sample_index in rand_timeslices:

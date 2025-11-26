@@ -12,10 +12,16 @@ import plotly.graph_objects as go
 from matplotlib.cm import get_cmap
 
 class Predictor():
-    def __init__(self):
+    """
+    Class providing utilities for object detection post-processing, bounding box
+    matching, hyperbola fitting, and interactive 3D visualization of Detections and fitting.
+    """
+
+    def __init__(self) -> None:
         pass
 
     def extract_boxes_object_detection(self, results)->dict:
+        
         all_boxes = {}
 
         for result in results:
