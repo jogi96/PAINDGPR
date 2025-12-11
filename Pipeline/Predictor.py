@@ -21,12 +21,26 @@ class Predictor():
         pass
 
     def extract_boxes_object_detection(self, results)->dict:
+        """
+        Extract YOLO bounding boxes from inference results.
+
+
+        Args:
+        results (List[Any]): YOLO detection results.
+
+
+        Returns:
+        Dict[str, np.ndarray]: Mapping from image name to detected bounding boxes
+        as (x1, y1, x2, y2) arrays.
+        """
         
         all_boxes = {}
 
+        #extraction of all bounding boxes and saving them into a dict
         for result in results:
             img_name = os.path.basename(result.path)
             if result.boxes is not None:
+                # how to acces the boxes
                 boxes = result.boxes.xyxy.cpu().numpy()
                 all_boxes[img_name] = boxes# Bounding boxes in (x1, y1, x2, y2) format
             else:
@@ -34,18 +48,35 @@ class Predictor():
         
         return all_boxes
 
-    def match_detections(self,results, dist_trheshhold, save_path, export:bool = False)-> dict:
+    def match_detections(self, results, dist_trheshhold:int, save_path:str, export:bool = False)-> pd.DataFrame:
+        """
+        Match bounding boxes across cuts based on Euclidean distance between centers.
+
+
+        Args:
+        results (List[Any]): YOLO inference results.
+        dist_trheshhold (float): Distance threshold for matching detections.
+        save_path (str): Output folder for optional CSV export.
+        export (bool): Whether to save CSV.
+
+
+        Returns:
+        pd.DataFrame: DataFrame containing matched bounding boxes and polygons.
+        """
         global_boxes = []
         global_id = 0
         records = []
 
+        #helpfunction for calculation center of bounding box
         def center_bbox(box):
             x1,y1,x2,y2 = box
             return ((x1+x2)/2, (y1+y2)/2)
-    
+
+        # helpfunction for calculating distance between to centers
         def euclidan_distance(c1, c2):
             return np.sqrt((c1[0]-c2[0])**2 + (c1[1]-c2[1])**2)
     
+        
         def parse_filename(filename):
             base_name = os.path.basename(filename)
         
@@ -61,38 +92,43 @@ class Predictor():
             return filename_part, cut_type, cut_number
 
 
-
+        #iterating threw results
         for result in results:
+            #getting image name
             img = os.path.basename(result.path)
             filename, cut_type, cut_number = parse_filename(img)
 
+            #getting bbox data
             if result.boxes is not None:
                 boxes = result.boxes.xyxy.cpu().numpy()
            
             else:
                 boxes = np.empty((0,4)) 
                   
-        
+            #getting polygon data
             if hasattr(result, "masks") and result.masks is not None:
                 polygons = [mask.tolist() for mask in result.masks.xy]
             
             else:
                 polygons = []
-
+            
+            #iterating threw boxes
             for i, box in enumerate(boxes):
                 center = center_bbox(box)
                 existing_id = None
-
+                
+                #setting as new global box if its bigger den dist threshold
                 for gid, gcenter in global_boxes:
                     if euclidan_distance(center, gcenter)< dist_trheshhold:
                         existing_id = gid
                         break
-            
+                
                 if existing_id is None:
                     existing_id = global_id
                     global_boxes.append((global_id,center))
                     global_id +=1
 
+                #get polygons and bbox data
                 polygon_data = json.dumps(polygons[i] if i < len(polygons) else [])
                 bbox_data = json.dumps(box.tolist())
             
@@ -114,7 +150,17 @@ class Predictor():
     
     
 
-    def validate_detections(self,matched_detections,results, csv:bool = False, csv_path:str = None):
+    def validate_detections(self,matched_detections: pd.DataFrame,results, csv:bool = False, csv_path:str = None) -> None:
+        """
+        Validate consistency between YOLO detections and matched detection table.
+
+
+        Args:
+        matched_detections (pd.DataFrame): Matched bounding boxes.
+        results (List[Any]): YOLO outputs for comparison.
+        csv (bool): Whether to load matched detections from CSV.
+        csv_path (str): Path to CSV if csv=True.
+        """
 
         if csv:
             matched_df = pd.read_csv(csv_path, sep=",")
@@ -135,13 +181,28 @@ class Predictor():
             print(f"Yolo Detections:{number_of_detections_results} Number of Matched Detections {number_detections_csv_total}")
 
 
-    def fit_hyperbolas_on_every_cut(self,df, csv:bool=False, csv_path:str = None):
+    def fit_hyperbolas_on_every_cut(self,df:pd.DataFrame, csv:bool=False, csv_path:str = None) -> pd.DataFrame:
+        """
+        Fit hyperbolas on every cut individually using quadratic regression.
+
+
+        Args:
+        df (pd.DataFrame): Dataframe of matched detections.
+        csv (bool): Whether to load DataFrame from CSV.
+        csv_path (str): Path to CSV.
+
+
+        Returns:
+        pd.DataFrame: Hyperbola parameters per cut.
+        """
+        #Load df from csv if saved as csv
         if csv:
             df = pd.read_csv(csv_path)
         else:
             df = df
 
         fits = []
+
         for i, row in df.iterrows():
             #Fit Hyperbolas with multiplie Regression
             polygon =  json.loads(row["polygon_data"])
@@ -151,6 +212,7 @@ class Predictor():
             t = polygon[:,1]
             t = t
 
+            #fit Linear Regression Model
             y = t**2
             X = np.column_stack([np.ones_like(x), x, x**2])
             model = LinearRegression(fit_intercept=False)
@@ -158,6 +220,17 @@ class Predictor():
 
             print(f"fit per cut(polygon:{i} in bbox:{bbox} , coefficients{model.coef_})")
             b0, b1, b2 = model.coef_
+
+            # 1) b2 muss positiv sein
+            if b2 <= 0:
+                print(f"Skip fit: b2 <= 0 (b2={b2})")
+                continue
+
+            # 2) t0^2 darf nicht negativ sein
+            disc = b0 - b1**2 / (4 * b2)
+            if disc <= 0:
+                print(f"Skip fit: t0^2 < 0 (disc={disc})")
+                continue
 
             #Convert Coefficients to Hyperbel context
             v = np.sqrt((4/b2))
@@ -183,7 +256,21 @@ class Predictor():
         return fits_df
     
 
-    def fit_hyperbolas_idealized(self,df, csv:bool=False, csv_path:str = None,):
+    def fit_hyperbolas_idealized(self,df:pd.DataFrame, csv:bool=False, csv_path:str = None) -> pd.DataFrame:
+        """
+        Fit idealized (combined) hyperbolas for each bbox across all cuts.
+
+
+        Args:
+        df (pd.DataFrame): DataFrame of detections.
+        csv (bool): Whether to load CSV.
+        csv_path (str): Path.
+
+
+        Returns:
+        pd.DataFrame: Idealized global hyperbola parameters.
+        """
+        #load df as csv if saved as csv
         if csv:
             df = pd.read_csv(csv_path)
         else:
@@ -197,12 +284,14 @@ class Predictor():
             #Fit Hyperbolas with multiplie Regression
             every_x = []
             every_t = []
+            
 
             filenames = group["filename"].unique().tolist()
             cuts = group["cut_number"].unique().tolist()
 
             for i, row in group.iterrows():
-
+                
+                #get polygon data
                 polygon =  json.loads(row["polygon_data"])
                 polygon = np.array(polygon)
                 x = polygon[:,0]
@@ -214,6 +303,7 @@ class Predictor():
             every_x = np.hstack(every_x)
             every_t = np.hstack(every_t)
 
+            #fit Linear Regression Model per bbox
             y = every_t**2
             X = np.column_stack([np.ones_like(every_x), every_x, every_x**2])
             model = LinearRegression(fit_intercept=False)
@@ -221,6 +311,17 @@ class Predictor():
 
             print(f"idealized fit (fit for bbox: {bbox}, coefficients{model.coef_})")
             b0, b1, b2 = model.coef_
+
+            # 1) b2 muss positiv sein
+            if b2 <= 0:
+                print(f"Skip fit: b2 <= 0 (b2={b2})")
+                continue
+
+            # 2) t0^2 darf nicht negativ sein
+            disc = b0 - b1**2 / (4 * b2)
+            if disc <= 0:
+                print(f"Skip fit: t0^2 < 0 (disc={disc})")
+                continue
 
             #Convert Coefficients to Hyperbel context
             v = np.sqrt((4/b2))
@@ -246,7 +347,26 @@ class Predictor():
     
         return fits_df
     
-    def fit_hyperbolas(self,matched_detections, export_csv:bool = False, save_path:str = None):
+    def fit_hyperbolas(self,matched_detections:pd.DataFrame, export_csv:bool = False, save_path:str = None) -> pd.DataFrame:
+        """
+        Fit hyperbolas for all detected objects both per cut and idealized across all cuts.
+
+        This method performs two different regression-based hyperbola fits:
+        1. Idealized fit per bounding box across all cuts (`fit_hyperbolas_idealized`)
+        2. Individual fit for each cut (`fit_hyperbolas_on_every_cut`)
+
+        Args:
+        matched_detections (pd.DataFrame):
+            DataFrame containing polygon detections and their assigned bbox groups.
+        export_csv (bool, optional):
+            If True, export both resulting DataFrames as CSV files. Defaults to False.
+        save_path (str | None, optional):
+            Output directory for CSV export. Required when export_csv=True.
+
+        Returns:
+        tuple[pd.DataFrame, pd.DataFrame]:
+            (idealized_fits_df, per_cut_fits_df)
+        """
     
         idelaized_fit = self.fit_hyperbolas_idealized(df =matched_detections)
         fits_per_cut = self.fit_hyperbolas_on_every_cut(df=matched_detections)
@@ -259,7 +379,23 @@ class Predictor():
             return idelaized_fit,fits_per_cut
         
 
-    def get_axis_and_sample_rate(self,sgy_file,df):
+    def get_axis_and_sample_rate(self,sgy_file:segyio.SegyFile ,df:pd.DataFrame) -> tuple:
+        """
+        Extract basic SEGY geometry and sampling information.
+
+        Args:
+        sgy_file (segyio.SegyFile):
+            Opened SEGY file used to read binary header fields.
+        df (pd.DataFrame):
+            DataFrame containing at least 'inline' and 'crossline' columns.
+
+        Returns:
+        tuple[int, int, int, int]:
+            (number_of_crosslines,
+             number_of_inlines,
+             samples_per_trace,
+             sample_rate)
+        """
         number_of_crosslines = len(df["crossline"].unique())
         number_of_inlines = len(df["inline"].unique())
         bin_header_file = dict(sgy_file.bin)
@@ -269,7 +405,30 @@ class Predictor():
         return number_of_crosslines, number_of_inlines, sampels_per_trace, sample_rate
 
 
-    def help_function_physical_units(self,sample_rate,sample_rate_factor, number_of_crosslines, number_of_inlines, width_crosslines:int = None, width_inlines:int = None):
+    def help_function_physical_units(self,sample_rate:float,sample_rate_factor:float , number_of_crosslines:int , number_of_inlines:int , width_crosslines:float = None, width_inlines:float = None) -> tuple:
+        """
+        Compute pixel-to-physical unit conversion values.
+
+        Args:
+        sample_rate (float):
+            Sample interval from SEGY header (typically microseconds).
+        sample_rate_factor (float):
+            Additional scaling factor for adjusting time resolution.
+        number_of_crosslines (int):
+            Total count of crosslines.
+        number_of_inlines (int):
+            Total count of inlines.
+        width_crosslines (float):
+            Physical width of the volume in crossline direction (meters).
+        width_inlines (float):
+            Physical width of the volume in inline direction (meters).
+
+        Returns:
+        tuple[float, float, float]:
+            (time_per_pixel,
+             meters_per_pixel_crossline,
+             meters_per_pixel_inline)
+        """
         #getting the time per pixel
         time_per_pixel = sample_rate / sample_rate_factor
 
@@ -281,7 +440,31 @@ class Predictor():
 
         return time_per_pixel, distance_per_pixel_crosslines, distance_per_pixel_inlines
 
-    def convert_phys_params(self,df, dcrosslines, dtime, export_csv:bool = False, name_of_df:str=None, save_path:str = None):
+    def convert_phys_params(self,df:pd.DataFrame, dcrosslines:float, dtime:float, export_csv:bool = False, name_of_df:str=None, save_path:str = None) -> pd.DataFrame:
+        """
+        Convert hyperbola fit parameters from pixel/sample units to physical units.
+
+        Args:
+        df (pd.DataFrame):
+            DataFrame containing hyperbola parameters (x0, t0, v).
+        dcrosslines (float):
+            Conversion factor for x-direction (meters per pixel).
+        dtime (float):
+            Conversion factor for t-direction (nanoseconds per sample).
+        export_csv (bool, optional):
+            Whether to export the converted DataFrame as CSV. Defaults to False.
+        name_of_df (str | None, optional):
+            Prefix for the exported CSV file.
+        save_path (str | None, optional):
+            Output directory for CSV export.
+
+        Returns:
+        pd.DataFrame:
+            DataFrame with converted physical parameters:
+            - x0_m (meters)
+            - t0_ns (nanoseconds)
+            - v_m/ns (velocity)
+        """
         dcrosslines = float(dcrosslines)
         dtime = float(dtime)
         df = df.copy()
@@ -332,15 +515,11 @@ class Predictor():
             Optional multiplier for sample spacing.
         """
 
-        # ============================================================
-        # GET BASIC AXIS / SAMPLE INFORMATION
-        # ============================================================
+        #getting Base Information (Axis Information)
         number_of_crosslines,number_of_inlines,samples_per_trace,sample_rate= self.get_axis_and_sample_rate(sgy_file=sgy_file, 
                                                                                                             df=df_from_DatatoolKit)
 
-        # ============================================================
-        # PHYSICAL UNIT CONVERSION (IF ENABLED)
-        # ============================================================
+        #Physical Unit conversation if enabled
         if physics_enabled:
             if width_inlines is None or width_crosslines is None:
                 raise ValueError("Width Inline and Width Crosslines must be set in physics mode.")
@@ -358,9 +537,7 @@ class Predictor():
             fits_per_cut_df = self.convert_phys_params(fits_per_cut_df, dcrosslines=dx, dtime=time_per_pixel)
             fit_idealized_df = self.convert_phys_params(fit_idealized_df, dcrosslines=dx, dtime=time_per_pixel)
 
-        # ============================================================
-        # FIGURE SETUP
-        # ============================================================
+        #Setup Figure
         fig = go.Figure()
         cmap = get_cmap("tab20")
 
@@ -370,20 +547,20 @@ class Predictor():
         traces_surface = []
         traces_surface_apex = []
 
-        # ============================================================
-        # IDEALIZED SURFACES + APEX-LINES
-        # ============================================================
+        #Idealized Surface
         for _, row in fit_idealized_df.iterrows():
 
+            # parameters
             bbox = int(row["bbox"])
-            cuts = row["cut_number"]
             v_raw, x0_raw, t0_raw = row["v"], row["x0"], row["t0"]
 
+            # color
             r, g, b, a = cmap(bbox % 20)
             col = f"rgba({255*r:.0f},{255*g:.0f},{255*b:.0f},0.7)"
 
+            # grid limits
             xmin, xmax = min(row["X_Data"]), max(row["X_Data"])
-            cmin, cmax = min(cuts), max(cuts)
+            cmin, cmax = 0, number_of_inlines -1
 
             # grid in pixel units
             xf = np.linspace(xmin, xmax, 60)
@@ -408,18 +585,23 @@ class Predictor():
                 showlegend=True
             ))
 
-            # --------------------------------------
-            # Apex line
-            # --------------------------------------
+            # Apex Line for idealized fit
             y_line = np.linspace(cmin, cmax, 50)
             x_line = np.full_like(y_line, x0_raw)
             z_line = np.full_like(y_line, t0_raw)
 
+            # convert if needed
             if physics_enabled:
+
+                # convert
                 x_line = x_line * dx
                 y_line = y_line * dy
                 z_line = z_line * time_per_pixel
+
+                # customdata
                 base = [x0_raw, row["x0_m"], t0_raw, row["t0_ns"], v_raw, row["v_m/ns"]]
+
+                # hovertemplate
                 hovertemplate = (
                     "<b>Idealisiert Apex</b><br>"
                     "x0 = %{customdata[0]:.1f} px (%{customdata[1]:.3f} m)<br>"
@@ -428,7 +610,10 @@ class Predictor():
                     "<extra></extra>"
                 )
             else:
+                # customdata
                 base = [x0_raw, t0_raw, v_raw]
+
+                # hovertemplate
                 hovertemplate = (
                     "<b>Idealisiert Apex</b><br>"
                     "x0 = %{customdata[0]:.1f} px<br>"
@@ -450,17 +635,18 @@ class Predictor():
                 showlegend=True
             ))
 
-        # ============================================================
-        # HYPERBOLAS PER CUT + APEX POINT
-        # ============================================================
+        # Hyperbolas per cut and apex per hyperbola
         for _, row in fits_per_cut_df.iterrows():
-
+            
+            # parameters
             bbox = int(row["bbox_number"])
             cut = int(row["cut_number"])
             X = np.array(row["X_Data"])
 
+            # getting raw parameters
             v_raw, x0_raw, t0_raw = row["v"], row["x0"], row["t0"]
 
+            # color per bbox
             r, g, b, a = cmap(bbox % 20)
             col = f"rgba({255*r:.0f},{255*g:.0f},{255*b:.0f},{a})"
 
@@ -486,10 +672,13 @@ class Predictor():
 
             # Apex point
             if physics_enabled:
+                
                 x_ap = row["x0_m"]
                 y_ap = cut * dy
                 z_ap = row["t0_ns"]
                 base = [x0_raw, row["x0_m"], t0_raw, row["t0_ns"], v_raw, row["v_m/ns"]]
+
+                # hovertemplate
                 hovertemplate = (
                     "<b>Apex</b><br>"
                     "x0 = %{customdata[0]:.1f} px (%{customdata[1]:.3f} m)<br>"
@@ -498,10 +687,13 @@ class Predictor():
                     "<extra></extra>"
                 )
             else:
+
                 x_ap = x0_raw
                 y_ap = cut
                 z_ap = t0_raw
                 base = [x0_raw, t0_raw, v_raw]
+
+                #hovertemplate
                 hovertemplate = (
                     "<b>Apex</b><br>"
                     "x0 = %{customdata[0]:.1f} px<br>"
@@ -521,11 +713,10 @@ class Predictor():
                 showlegend=False
             ))
 
-        # ============================================================
-        # POLYGON CONTOURS
-        # ============================================================
+        # Detected Polygons
         for _, row in matched_detections.iterrows():
 
+            # parse polygon
             try:
                 poly = json.loads(row["polygon_data"])
             except Exception:
@@ -533,11 +724,13 @@ class Predictor():
 
             if len(poly) < 2:
                 continue
-
+            
+            # extract coordinates
             xs = [p[0] for p in poly]
             zs = [p[1] for p in poly]
             cut = row["cut_number"]
 
+            # convert if needed
             if physics_enabled:
                 xs = [x * dx for x in xs]
                 ys = [cut * dy] * len(xs)
@@ -545,6 +738,7 @@ class Predictor():
             else:
                 ys = [cut] * len(xs)
 
+            # color per bbox
             bbox = int(row["bbox_number"])
             r, g, b, a = cmap(bbox % 20)
             col = f"rgba({255*r:.0f},{255*g:.0f},{255*b:.0f},{a})"
@@ -558,18 +752,14 @@ class Predictor():
                 showlegend=False
             ))
 
-        # ============================================================
-        # BUTTON MASK
-        # ============================================================
+        # Button mask
         def mask(lst):
             vis = [False] * len(fig.data)
             for i in lst:
                 vis[i] = True
             return vis
 
-        # ============================================================
-        # LAYOUT
-        # ============================================================
+        # Layout
         if physics_enabled:
             x_range = [0, number_of_crosslines * dx]
             y_range = [0, number_of_inlines * dy]
@@ -598,18 +788,20 @@ class Predictor():
                     buttons=[
                         dict(label="Polygone", method="update", args=[{"visible": mask(traces_poly)}]),
                         dict(label="Hyperbeln Pro Cut", method="update", args=[{"visible": mask(traces_hyper)}]),
-                        dict(label="Apex Pro Hyperbel", method="update", args=[{"visible": mask(traces_apex)}]),
+                        dict(label="Scheitelpunkt Pro Hyperbel", method="update", args=[{"visible": mask(traces_apex)}]),
                         dict(label="Idealisiert (Flächen)", method="update", args=[{"visible": mask(traces_surface)}]),
-                        dict(label="Apex Idealisiert", method="update", args=[{"visible": mask(traces_surface_apex)}]),
+                        dict(label="Scheitelpunkt Idealisiert", method="update", args=[{"visible": mask(traces_surface_apex)}]),
                     ],
                     x=0,
                     y=0.85
                 )
             ],
-            height=700
+            height=800
         )
 
         fig.show()
+        fig.write_html("hyperbolas_3d_plot.html")
+
 
 
 

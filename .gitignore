@@ -4,7 +4,6 @@
 *.SEGY
 *.segy
 
-*.png
 
 # --- Ignore Python cache files ---
 __pycache__/
